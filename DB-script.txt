@@ -1,0 +1,77 @@
+
+
+-- ######################################################################
+-- 1. TABLA CENTRAL DE USUARIOS (USERS)
+-- ######################################################################
+
+CREATE TABLE users (
+    id VARCHAR(50) PRIMARY KEY, 
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    company_name VARCHAR(100),
+    fecha_registro TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ######################################################################
+-- 2. TABLA: Catalogo (Catalogo de Cuentas) con soporte para subcuentas
+-- ######################################################################
+
+CREATE TABLE catalogo (
+    id SERIAL PRIMARY KEY,
+    app_user_id VARCHAR(50) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    codigo VARCHAR(20) NOT NULL, 
+    nombre VARCHAR(100) NOT NULL,
+    naturaleza CHAR(1) NOT NULL CHECK (naturaleza IN ('D', 'C')),
+    es_cuenta_mayor BOOLEAN NOT NULL DEFAULT FALSE,
+    parent_id INTEGER REFERENCES catalogo(id) ON DELETE CASCADE, -- subcuentas apuntan a la cuenta mayor
+    UNIQUE (app_user_id, codigo)
+);
+
+-- Índice para buscar subcuentas rápidamente
+CREATE INDEX idx_catalogo_parent ON catalogo(parent_id);
+
+-- ######################################################################
+-- 3. TABLA: Asientos (Encabezado del Libro Diario)
+-- ######################################################################
+
+CREATE TABLE asientos (
+    id SERIAL PRIMARY KEY,
+    app_user_id VARCHAR(50) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    fecha DATE NOT NULL,
+    descripcion VARCHAR(255) NOT NULL,
+    referencia VARCHAR(50), 
+    fecha_creacion TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index para acelerar consultas por usuario
+CREATE INDEX idx_asientos_user ON asientos (app_user_id);
+
+-- ######################################################################
+-- 4. TABLA: LibroDiario (Detalle de los Asientos)
+-- ######################################################################
+
+CREATE TABLE libro_diario (
+    id SERIAL PRIMARY KEY,
+    asiento_id INTEGER NOT NULL REFERENCES asientos(id) ON DELETE CASCADE,
+    cuenta_id INTEGER NOT NULL REFERENCES catalogo(id) ON DELETE CASCADE, 
+    debito NUMERIC(15, 2) NOT NULL DEFAULT 0.00 CHECK (debito >= 0),
+    credito NUMERIC(15, 2) NOT NULL DEFAULT 0.00 CHECK (credito >= 0),
+    UNIQUE (id, asiento_id)
+);
+
+CREATE INDEX idx_diario_cuenta ON libro_diario (cuenta_id);
+
+-- ######################################################################
+-- 5. TABLA: LibroMayor (Saldos para Mayorización)
+-- ######################################################################
+
+CREATE TABLE libro_mayor (
+    id SERIAL PRIMARY KEY,
+    app_user_id VARCHAR(50) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    cuenta_id INTEGER NOT NULL REFERENCES catalogo(id), 
+    saldo_inicial NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+    saldo_actual NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+    ultima_mayorizacion TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (app_user_id, cuenta_id)
+);
