@@ -1,5 +1,40 @@
 const db = require('../config/db.config');
 
+exports.loginUser = async (req, res) => {
+    const { email } = req.body;
+    
+    if (!email || !email.trim()) {
+        return res.status(400).json({ error: 'El correo electrónico es requerido.' });
+    }
+
+    const query = `
+        SELECT id, first_name, last_name, email, company_name
+        FROM users
+        WHERE email = $1
+        LIMIT 1;
+    `;
+    
+    try {
+        const result = await db.query(query, [email.toLowerCase().trim()]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Usuario no encontrado. Por favor, registrate primero.' });
+        }
+
+        const user = result.rows[0];
+        res.status(200).json({
+            id: user.id,
+            firstName: user.first_name,
+            lastName: user.last_name,
+            email: user.email,
+            companyName: user.company_name
+        });
+    } catch (error) {
+        console.error('Error al buscar el usuario en DB:', error);
+        res.status(500).json({ error: 'Fallo interno del servidor al iniciar sesión.' });
+    }
+};
+
 exports.saveUser = async (req, res) => {
     const { id, firstName, lastName, email, companyName } = req.body;
     
