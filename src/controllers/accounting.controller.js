@@ -96,6 +96,60 @@ exports.deleteAccount = async (req, res) => {
     }
 };
 
+exports.updateAccount = async (req, res) => {
+    const { id: accountId } = req.params;
+    const { userId, codigo, nombre, naturaleza, esCuentaMayor, parent_id } = req.body;
+
+    if (!accountId || !userId) {
+        return res.status(400).json({ error: 'Faltan campos requeridos (ID de cuenta o ID de usuario).' });
+    }
+
+    if (naturaleza && !['D', 'C'].includes(naturaleza)) {
+        return res.status(400).json({ error: 'La naturaleza debe ser D (Deudora) o C (Acreedora).' });
+    }
+
+    const query = `
+        UPDATE catalogo 
+        SET codigo = COALESCE($3, codigo),
+            nombre = COALESCE($4, nombre),
+            naturaleza = COALESCE($5, naturaleza),
+            es_cuenta_mayor = COALESCE($6, es_cuenta_mayor),
+            parent_id = $7
+        WHERE id = $1 AND app_user_id = $2
+        RETURNING id, codigo, nombre, naturaleza, es_cuenta_mayor, parent_id;
+    `;
+
+    try {
+        const result = await db.query(query, [
+            accountId, 
+            userId, 
+            codigo, 
+            nombre, 
+            naturaleza, 
+            esCuentaMayor,
+            parent_id
+        ]);
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Cuenta no encontrada o no pertenece al usuario.' });
+        }
+
+        res.status(200).json({ 
+            message: 'Cuenta actualizada exitosamente', 
+            account: result.rows[0] 
+        });
+
+    } catch (error) {
+        console.error('Error al actualizar cuenta:', error);
+        
+        if (error.code === '23505') {
+            return res.status(409).json({ error: 'El código de cuenta ya existe para este usuario.' });
+        }
+        
+        res.status(500).json({ error: 'Fallo interno del servidor al actualizar la cuenta.' });
+    }
+};
+
 exports.ledgerizeAccounts = async (req, res) => {
     const { userId } = req.body;
 
@@ -221,15 +275,15 @@ exports.getLedger = async (req, res) => {
     try {
         const query = `
             SELECT 
-                lm.cuenta_id, 
-                lm.saldo_actual, 
+                c.id AS cuenta_id,
+                COALESCE(lm.saldo_actual, 0) AS saldo_actual,
                 TO_CHAR(lm.ultima_mayorizacion, 'YYYY-MM-DD HH24:MI:SS') AS ultima_mayorizacion,
                 c.codigo, 
                 c.nombre, 
                 c.naturaleza
-            FROM libro_mayor lm
-            JOIN catalogo c ON lm.cuenta_id = c.id
-            WHERE lm.app_user_id = $1
+            FROM catalogo c
+            LEFT JOIN libro_mayor lm ON lm.cuenta_id = c.id AND lm.app_user_id = $1
+            WHERE c.app_user_id = $1
             ORDER BY c.codigo ASC;
         `;
         
@@ -276,8 +330,18 @@ exports.getAccountMovements = async (req, res) => {
         `;
         
         const descendantResult = await db.query(descendantQuery, [accountId, userId]);
-        
-        const accountIdsToSearch = descendantResult.rows.map(row => row.id);
+        let accountIdsToSearch = descendantResult.rows.map(row => row.id);
+
+        // Fallback: si no hay jerarquía por parent_id, usar prefijo de código
+        if (accountIdsToSearch.length <= 1) {
+            const base = await db.query(`SELECT codigo FROM catalogo WHERE id = $1 AND app_user_id = $2`, [accountId, userId]);
+            if (base.rows.length) {
+                const prefix = String(base.rows[0].codigo || '') + '%';
+                const byCode = await db.query(`SELECT id FROM catalogo WHERE app_user_id = $1 AND codigo LIKE $2`, [userId, prefix]);
+                const ids = byCode.rows.map(r => r.id);
+                if (ids.length) accountIdsToSearch = ids;
+            }
+        }
 
         if (accountIdsToSearch.length === 0) {
             return res.status(404).json({ error: 'La cuenta no fue encontrada para el usuario especificado.' });

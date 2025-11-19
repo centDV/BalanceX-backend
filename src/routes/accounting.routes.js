@@ -6,6 +6,7 @@ const router = express.Router();
 router.get('/catalog', accountingController.getCatalogo);
 router.post('/catalog', accountingController.addAccount);
 router.post('/catalog/import', accountingController.importCatalog);
+router.put('/catalog/:id', accountingController.updateAccount);
 router.delete('/catalog/:id', accountingController.deleteAccount);
 
 router.post('/ledgerize', accountingController.ledgerizeAccounts); 

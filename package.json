@@ -4,7 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "seed:balanced": "node seed-balanced-data.js",
+    "seed:test": "node seed-test-data.js",
+    "adjust:inv": "node adjust-balance-square.js",
+    "seed:new": "node seed-new-user.js"
   },
   "keywords": [],
   "author": "",
